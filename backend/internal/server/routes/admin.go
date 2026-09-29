@@ -63,6 +63,7 @@ func RegisterAdminRoutes(
 
 		// 国产供应商（kimi/zhipu/deepseek）额度与余额
 		registerCNProviderRoutes(admin, h)
+		registerUpstreamBalanceRoutes(admin, h)
 
 		// 代理管理
 		registerProxyRoutes(admin, h, stepUpAuth)
@@ -510,6 +511,15 @@ func registerCNProviderRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		cn.GET("/accounts/:id/quota", h.Admin.CNProvider.QueryQuota)
 		// payg 账号余额（kimi/deepseek；zhipu 无余额端点）。
 		cn.GET("/accounts/:id/balance", h.Admin.CNProvider.QueryBalance)
+	}
+}
+
+// registerUpstreamBalanceRoutes 注册上游中转站账号的余额查询端点。
+// 与 cn-providers 分开：那条查的是厂商官方端点，这条查的是第三方中转面板。
+func registerUpstreamBalanceRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	up := admin.Group("/upstream-balance")
+	{
+		up.GET("/accounts/:id/balance", h.Admin.UpstreamBalance.QueryBalance)
 	}
 }
 

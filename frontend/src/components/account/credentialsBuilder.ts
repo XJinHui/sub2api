@@ -473,6 +473,20 @@ export function cnBalanceCellVisible(platform: string, accountMode: string): boo
 }
 
 /**
+ * 上游中转站余额单元格可见性。
+ * 不看平台（对端程序无法从平台字段区分），只看凭证里是否显式声明了
+ * upstream_protocol —— 与后端 service.validateRelayAccount 同一判定口径。
+ */
+export function upstreamBalanceCellVisible(
+  accountType: string,
+  credentials: Record<string, unknown> | undefined
+): boolean {
+  if (accountType !== 'apikey') return false
+  const protocol = credentials?.upstream_protocol
+  return typeof protocol === 'string' && protocol.trim() !== ''
+}
+
+/**
  * 将请求头覆写写入 credentials。
  * create 模式：关闭时不写入任何字段；edit 模式：关闭时删除字段（全量替换语义）。
  */

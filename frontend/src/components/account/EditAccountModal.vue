@@ -1986,6 +1986,32 @@
         />
       </div>
 
+      <!-- 上游中转站声明：勾选后账号列表展示对端面板余额 -->
+      <div
+        v-if="account?.type === 'apikey'"
+        class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div>
+          <label class="input-label mb-0">{{ t('admin.accounts.upstreamBalance.isRelay') }}</label>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.upstreamBalance.isRelayHint') }}
+          </p>
+        </div>
+        <Toggle
+          v-model="upstreamRelayEnabled"
+          data-testid="upstream-relay-toggle"
+          :aria-label="t('admin.accounts.upstreamBalance.isRelay')"
+        />
+      </div>
+      <div v-if="account?.type === 'apikey' && upstreamRelayEnabled">
+        <label class="input-label">{{ t('admin.accounts.upstreamBalance.protocol') }}</label>
+        <select v-model="upstreamProtocol" class="input" data-testid="upstream-relay-protocol">
+          <option value="newapi">{{ t('admin.accounts.upstreamBalance.protocolNewAPI') }}</option>
+          <option value="sub2api">{{ t('admin.accounts.upstreamBalance.protocolSub2API') }}</option>
+        </select>
+        <p class="input-hint">{{ t('admin.accounts.upstreamBalance.protocolHint') }}</p>
+      </div>
+
       <OllamaCloudUsageSettings
         v-if="account?.ollama_cloud_usage?.eligible"
         :account="account"
@@ -3619,6 +3645,9 @@ const autoResetCreditEnabled = ref(false)
 const autoResetCredit5hThreshold = ref(100)
 const autoResetCredit7dThreshold = ref(100)
 const upstreamBillingAutoProbeEnabled = ref(false)
+// 上游中转站声明（凭证 upstream_protocol）：决定账号列表是否展示对端余额。
+const upstreamRelayEnabled = ref(false)
+const upstreamProtocol = ref('newapi')
 const upstreamBillingRateSyncEnabled = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 // 上游ID：直接上游声明请求标识的响应头名，留空不记录。
@@ -4450,6 +4479,15 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       ? editAdaptiveBaseUrls.value.chat_completions
       : (credentials.base_url as string) || platformDefaultUrl
 
+    // 上游中转站声明回填（凭证 upstream_protocol）。
+    const storedUpstreamProtocol = credentials.upstream_protocol
+    upstreamRelayEnabled.value =
+      typeof storedUpstreamProtocol === 'string' && storedUpstreamProtocol.trim() !== ''
+    upstreamProtocol.value =
+      typeof storedUpstreamProtocol === 'string' && storedUpstreamProtocol.trim() !== ''
+        ? storedUpstreamProtocol
+        : 'newapi'
+
     // Load model mappings and detect mode
     loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
 
@@ -5173,6 +5211,14 @@ const handleSubmit = async () => {
       const newCredentials: Record<string, unknown> = {
         ...currentCredentials,
         base_url: newBaseUrl
+      }
+
+      // 上游中转站声明：写入/移除 upstream_protocol，后端据此启停对端余额探测。
+      // 关闭开关时必须 delete，否则残留的旧值会让账号继续被当成中转站探测。
+      if (upstreamRelayEnabled.value) {
+        newCredentials.upstream_protocol = upstreamProtocol.value
+      } else {
+        delete newCredentials.upstream_protocol
       }
 
       // 国产供应商：模式与协议写入凭据（决定额度/余额探测与转发端点/格式）。

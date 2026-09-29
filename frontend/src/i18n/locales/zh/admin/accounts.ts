@@ -313,6 +313,23 @@ export default {
         minimax: 'MiniMax',
         opencode_go: 'OpenCode',
       },
+      upstreamBalance: {
+        balance: '上游余额 --',
+        used: '已用',
+        probe: '查询',
+        probeTooltip: '查询该上游中转站账号在对端面板的余额',
+        stale: '快照过期',
+        staleTooltip: '距上次成功查询已超过 30 分钟，显示的是历史快照。',
+        updatedAt: '更新于',
+        quotaUnit: '额度单位',
+        quotaUnitHint: '对端改过额度折算率，无法换算为美元，按面板原始额度单位展示。',
+        isRelay: '这是上游中转站账号',
+        isRelayHint: '开启后，账号列表会显示该账号在对端面板的余额（对端需为 New-API 系并暴露 /api/user/self）。',
+        protocol: '对端面板类型',
+        protocolNewAPI: 'New-API / One-API',
+        protocolSub2API: 'sub2api 网关',
+        protocolHint: '余额查询端点与解析格式随对端面板程序而定。',
+      },
       cnProviders: {
         accountMode: {
           title: '账号类型',
@@ -1403,7 +1420,7 @@ export default {
           missingExchangeParams: '缺少 code / session_id / state',
           failedToExchangeCode: 'Gemini 授权码兑换失败',
           missingProjectId:
-            'GCP Project ID 获取失败：您的 Google 账号未关联有效的 GCP 项目。请前往 Google Cloud Console 激活 GCP 并绑定信用卡，或在授权时手动填写 Project ID。',
+            'Google 未返回 Project ID。请填写此账号可用的 Google Cloud 项目 ID，重新生成授权链接并再次授权。',
           modelPassthrough: 'Gemini 直接转发模型',
           modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
           stateWarningTitle: '提示',

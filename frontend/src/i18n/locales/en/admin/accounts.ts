@@ -110,6 +110,23 @@ export default {
         minimax: 'MiniMax',
         opencode_go: 'OpenCode',
       },
+      upstreamBalance: {
+        balance: 'Upstream balance --',
+        used: 'Used',
+        probe: 'Query',
+        probeTooltip: 'Query this upstream relay account balance from the remote panel',
+        stale: 'Stale',
+        staleTooltip: 'Last successful query was over 30 minutes ago; showing a historical snapshot.',
+        updatedAt: 'Updated',
+        quotaUnit: 'quota units',
+        quotaUnitHint: 'The remote panel uses a custom quota-per-unit rate, so the value cannot be converted to USD and is shown in the panel’s raw quota units.',
+        isRelay: 'This is an upstream relay account',
+        isRelayHint: 'When enabled, the account list shows this account’s balance on the remote panel (the panel must be New-API based and expose /api/user/self).',
+        protocol: 'Remote panel type',
+        protocolNewAPI: 'New-API / One-API',
+        protocolSub2API: 'sub2api gateway',
+        protocolHint: 'The balance endpoint and response format depend on the remote panel software.',
+      },
       cnProviders: {
         accountMode: {
           title: 'Account Type',
@@ -1312,7 +1329,7 @@ export default {
 	          failedToGenerateUrl: 'Failed to generate Gemini auth URL',
 	          missingExchangeParams: 'Missing auth code, session ID, or state',
 	          failedToExchangeCode: 'Failed to exchange Gemini auth code',
-	          missingProjectId: 'GCP Project ID retrieval failed: Your Google account is not linked to an active GCP project. Please activate GCP and bind a credit card in Google Cloud Console, or manually enter the Project ID during authorization.',
+	          missingProjectId: 'Google did not return a Project ID. Enter a Google Cloud Project ID available to this account, regenerate the authorization URL, and authorize again.',
 	          modelPassthrough: 'Gemini Model Passthrough',
 	          modelPassthroughDesc:
 	            'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',

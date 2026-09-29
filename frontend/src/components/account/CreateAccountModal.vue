@@ -1419,6 +1419,32 @@
           <p v-if="apiKeyHint" class="input-hint">{{ apiKeyHint }}</p>
         </div>
 
+        <!-- 上游中转站声明：勾选后账号列表会显示对端面板余额（需对端是 New-API
+             系，暴露 /api/user/self）。不勾选则视为普通上游，不做余额探测。 -->
+        <div
+          class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
+        >
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.upstreamBalance.isRelay') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.upstreamBalance.isRelayHint') }}
+            </p>
+          </div>
+          <Toggle
+            v-model="upstreamRelayEnabled"
+            data-testid="upstream-relay-toggle"
+            :aria-label="t('admin.accounts.upstreamBalance.isRelay')"
+          />
+        </div>
+        <div v-if="upstreamRelayEnabled">
+          <label class="input-label">{{ t('admin.accounts.upstreamBalance.protocol') }}</label>
+          <select v-model="upstreamProtocol" class="input" data-testid="upstream-relay-protocol">
+            <option value="newapi">{{ t('admin.accounts.upstreamBalance.protocolNewAPI') }}</option>
+            <option value="sub2api">{{ t('admin.accounts.upstreamBalance.protocolSub2API') }}</option>
+          </select>
+          <p class="input-hint">{{ t('admin.accounts.upstreamBalance.protocolHint') }}</p>
+        </div>
+
         <!-- 上游倍率自动探测：全部 API-key 平台可用（所在区块已限定 apikey 类型） -->
         <div
           class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -3562,7 +3588,7 @@
         :show-manual-option="true"
         :initial-input-method="'manual'"
         :platform="form.platform"
-        :show-project-id="geminiOAuthType === 'code_assist'"
+        :show-project-id="form.platform === 'gemini' && geminiOAuthType !== 'ai_studio'"
         @generate-url="handleGenerateUrl"
         @cookie-auth="handleCookieAuth"
         @validate-refresh-token="handleValidateRefreshToken"
@@ -4155,6 +4181,9 @@ const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
 const upstreamBillingAutoProbeEnabled = ref(true)
+// 上游中转站声明（凭证 upstream_protocol）：勾选后账号会显示对端面板余额。
+const upstreamRelayEnabled = ref(false)
+const upstreamProtocol = ref('newapi')
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）账号类型、API 协议与端点 ──
 const accountMode = ref<CnAccountMode>('payg')
@@ -5784,6 +5813,13 @@ const handleSubmit = async () => {
   }
   if (form.platform === 'gemini') {
     credentials.tier_id = geminiTierAIStudio.value
+  }
+
+  // 上游中转站声明：写入 upstream_protocol，后端据此启用对端余额探测
+  // （见 service.validateRelayAccount）。与 account_mode 同层同思路，
+  // 不是新平台。
+  if (upstreamRelayEnabled.value) {
+    credentials.upstream_protocol = upstreamProtocol.value
   }
 
   // 国产供应商：账号模式 + 协议 + 对应端点写入凭据；后端按 account_mode 路由

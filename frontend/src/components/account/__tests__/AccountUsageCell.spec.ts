@@ -109,6 +109,10 @@ const cnUsageCellStubs = {
   },
   CNProviderBalanceCell: {
     template: '<div data-test="cn-balance-cell" />'
+  },
+  UpstreamBalanceCell: {
+    props: ['account'],
+    template: '<div data-test="upstream-balance-cell" />'
   }
 }
 
@@ -340,6 +344,50 @@ describe('AccountUsageCell', () => {
     expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(false)
     // 用量单元格已渲染时不再叠加 `-` 占位符
     expect(wrapper.text()).not.toContain('-')
+  })
+
+  it('上游中转站账号（apikey + upstream_protocol）在同一段模板链里渲染余额单元格', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9301,
+          platform: 'openai',
+          type: 'apikey',
+          credentials: { upstream_protocol: 'sub2api', api_key: '', base_url: 'https://relay.example.com' },
+          extra: { upstream_balance: 7.55, upstream_balance_unit: 'usd' }
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    // 回归：showUsageWindows 对中转站账号返回 true，模板会走 OAuth 分支链而非
+    // v-else 分支。组件若只挂在 v-else 里就永远渲染不出来（只有 `-`）。
+    expect(wrapper.find('[data-test="upstream-balance-cell"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('-')
+  })
+
+  it('未声明 upstream_protocol 的普通 apikey 账号不渲染余额单元格', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9302,
+          platform: 'openai',
+          type: 'apikey',
+          credentials: { base_url: 'https://api.openai.com' }
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="upstream-balance-cell"]').exists()).toBe(false)
   })
 
   it('Antigravity 图片用量会聚合新旧 image 模型', async () => {

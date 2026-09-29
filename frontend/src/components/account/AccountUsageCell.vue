@@ -584,6 +584,13 @@
       </div>
     </template>
 
+    <!-- 上游中转站账号（凭证声明 upstream_protocol）：显示对端面板余额。
+         必须放在这条链里 —— showUsageWindows 对它们返回 true（否则整块渲染成
+         `-`），会走这段 OAuth 分支链而不是下面的 v-else 分支。 -->
+    <template v-else-if="upstreamBalanceCellVisible">
+      <UpstreamBalanceCell :account="account" />
+    </template>
+
     <!-- Other accounts: no usage window -->
     <template v-else>
       <div class="text-xs text-gray-400">-</div>
@@ -608,6 +615,9 @@
         :account="account"
         @updated="handleOpenCodeGoUsageUpdated"
       />
+      <!-- 上游中转站账号（凭证声明 upstream_protocol）：显示对端面板余额。
+           放在 today stats 之前，让余额成为这类账号的第一眼信息。 -->
+      <UpstreamBalanceCell v-if="upstreamBalanceCellVisible" :account="account" />
       <!-- Today stats row (requests, tokens, cost, user_cost) -->
       <div
         v-if="todayStats"
@@ -688,8 +698,9 @@ import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
 import GrokQuotaProbeCell from './GrokQuotaProbeCell.vue'
 import CNProviderQuotaCell from './CNProviderQuotaCell.vue'
 import CNProviderBalanceCell from './CNProviderBalanceCell.vue'
+import UpstreamBalanceCell from './UpstreamBalanceCell.vue'
 import OllamaCloudUsageCell from './OllamaCloudUsageCell.vue'
-import { cnQuotaCellVisible as cnQuotaCellVisibleFn, cnBalanceCellVisible as cnBalanceCellVisibleFn } from './credentialsBuilder'
+import { cnQuotaCellVisible as cnQuotaCellVisibleFn, cnBalanceCellVisible as cnBalanceCellVisibleFn, upstreamBalanceCellVisible as upstreamBalanceCellVisibleFn } from './credentialsBuilder'
 import OpenCodeGoUsageCell from './OpenCodeGoUsageCell.vue'
 
 // Module-level cache shared across all AccountUsageCell instances
@@ -763,6 +774,9 @@ const showUsageWindows = computed(() => {
   ) {
     return true
   }
+  // 上游中转站账号：apikey 类型但有对端余额可查，由 UpstreamBalanceCell 展示。
+  // 不加这一条，这类账号会落回 `-` 占位符，新单元格永远不渲染。
+  if (upstreamBalanceCellVisible.value) return true
   return props.account.type === 'oauth' || props.account.type === 'setup-token'
 })
 
@@ -793,6 +807,11 @@ const cnAccountMode = computed(() => {
 })
 const cnQuotaCellVisible = computed(() => cnQuotaCellVisibleFn(props.account.platform, cnAccountMode.value))
 const cnBalanceCellVisible = computed(() => cnBalanceCellVisibleFn(props.account.platform, cnAccountMode.value))
+
+// 上游中转站账号（凭证声明 upstream_protocol）的余额单元格可见性。
+const upstreamBalanceCellVisible = computed(() =>
+  upstreamBalanceCellVisibleFn(props.account.type, props.account.credentials as Record<string, unknown> | undefined)
+)
 
 const isBatchManaged = computed(() => typeof props.requestBatchedUsage === 'function')
 
