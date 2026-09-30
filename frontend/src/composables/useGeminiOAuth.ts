@@ -103,7 +103,7 @@ export function useGeminiOAuth() {
     } catch (err: any) {
       // Check for specific missing project_id error
       const errorMessage = err.message || err.response?.data?.message || ''
-      if (errorMessage.includes('missing project_id')) {
+      if (errorMessage.includes('missing project_id') || errorMessage.includes('failed to auto-detect')) {
         error.value = t('admin.accounts.oauth.gemini.missingProjectId')
       } else {
         error.value = errorMessage || t('admin.accounts.oauth.gemini.failedToExchangeCode')

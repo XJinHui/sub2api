@@ -993,11 +993,20 @@ func (s *GeminiOAuthService) fetchProjectID(ctx context.Context, accessToken, pr
 			if resp.Response != nil && resp.Response.CloudAICompanionProject != nil {
 				switch v := resp.Response.CloudAICompanionProject.(type) {
 				case string:
-					return strings.TrimSpace(v), tierID, nil
+					if projectID := strings.TrimSpace(v); projectID != "" {
+						return projectID, tierID, nil
+					}
 				case map[string]any:
-					if id, ok := v["id"].(string); ok {
+					if id, ok := v["id"].(string); ok && strings.TrimSpace(id) != "" {
 						return strings.TrimSpace(id), tierID, nil
 					}
+				}
+			}
+
+			// Onboarding may complete before the project appears in its operation result.
+			if updated, err := s.codeAssist.LoadCodeAssist(ctx, accessToken, proxyURL, nil); err == nil && updated != nil {
+				if projectID := strings.TrimSpace(updated.CloudAICompanionProject); projectID != "" {
+					return projectID, tierID, nil
 				}
 			}
 
@@ -1005,7 +1014,7 @@ func (s *GeminiOAuthService) fetchProjectID(ctx context.Context, accessToken, pr
 			if fbErr == nil && strings.TrimSpace(fallback) != "" {
 				return strings.TrimSpace(fallback), tierID, nil
 			}
-			return "", tierID, errors.New("onboardUser completed but no project_id returned")
+			return "", tierID, errors.New("onboardUser completed but no project_id returned; enter a Project ID in the authorization form, regenerate the authorization URL, and authorize again")
 		}
 		time.Sleep(2 * time.Second)
 	}

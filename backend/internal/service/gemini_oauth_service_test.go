@@ -1181,6 +1181,38 @@ func TestGeminiOAuthService_RefreshAccountToken_CodeAssist_NoProjectID_AutoDetec
 	}
 }
 
+func TestGeminiOAuthService_FetchProjectID_AfterOnboardWithoutProject(t *testing.T) {
+	t.Parallel()
+
+	loadCalls := 0
+	codeAssist := &mockGeminiCodeAssistClient{
+		loadCodeAssistFunc: func(ctx context.Context, accessToken, proxyURL string, req *geminicli.LoadCodeAssistRequest) (*geminicli.LoadCodeAssistResponse, error) {
+			loadCalls++
+			if loadCalls == 1 {
+				return &geminicli.LoadCodeAssistResponse{}, nil
+			}
+			return &geminicli.LoadCodeAssistResponse{CloudAICompanionProject: "onboard-project"}, nil
+		},
+		onboardUserFunc: func(ctx context.Context, accessToken, proxyURL string, req *geminicli.OnboardUserRequest) (*geminicli.OnboardUserResponse, error) {
+			return &geminicli.OnboardUserResponse{
+				Done:     true,
+				Response: &geminicli.OnboardUserResultData{CloudAICompanionProject: ""},
+			}, nil
+		},
+	}
+
+	svc := NewGeminiOAuthService(&mockGeminiProxyRepo{}, nil, codeAssist, nil, &config.Config{})
+	defer svc.Stop()
+
+	projectID, _, err := svc.fetchProjectID(context.Background(), "token", "")
+	if err != nil {
+		t.Fatalf("fetchProjectID returned error: %v", err)
+	}
+	if projectID != "onboard-project" || loadCalls != 2 {
+		t.Fatalf("projectID=%q, LoadCodeAssist calls=%d; want onboard-project and 2", projectID, loadCalls)
+	}
+}
+
 func TestGeminiOAuthService_RefreshAccountToken_CodeAssist_NoProjectID_FailsEmpty(t *testing.T) {
 	t.Parallel()
 
