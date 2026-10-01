@@ -390,6 +390,7 @@ export default {
     latency: 'Latency',
     latencyFirstToken: 'First',
     latencyDuration: 'Total',
+    tps: 'TPS',
     time: 'Time',
     ws: 'WS',
     stream: 'Stream',

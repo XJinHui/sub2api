@@ -93,6 +93,7 @@ const DataTableStub = {
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
+        <slot name="cell-latency" :row="row" />
         <slot name="cell-request_id" :row="row" />
         <slot name="cell-upstream_request_id" :row="row" />
       </div>
@@ -141,6 +142,84 @@ describe('admin UsageTable tooltip', () => {
       height: 20,
       toJSON: () => ({}),
     } as DOMRect)
+  })
+
+  it('shows output TPS using generation time for streams and total time for sync requests', () => {
+    const rows = [
+      { request_type: 'stream', stream: true, first_token_ms: 2000 },
+      { request_type: 'sync', stream: false, first_token_ms: 2000 },
+      { request_type: 'sync', stream: false, first_token_ms: null },
+      { request_type: 'ws_v2', stream: false, first_token_ms: 2000 },
+      { stream: true, first_token_ms: 2000 },
+      { openai_ws_mode: true, stream: false, first_token_ms: 2000 },
+      { request_type: 'stream', stream: true, first_token_ms: 0 },
+      { request_type: 'cyber', stream: true, first_token_ms: 2000 },
+    ]
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: rows.map((row, index) => ({
+          ...baseImageRow,
+          request_id: `req-tps-${index}`,
+          billing_mode: 'token',
+          image_count: 0,
+          output_tokens: 1000,
+          duration_ms: 12000,
+          ...row,
+        })),
+        columns: [],
+        showAccountBilling: false,
+      },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+
+    expect(wrapper.findAll('[data-testid="usage-tps"]').map(cell => cell.text())).toEqual([
+      '100.0 tokens/s', '83.3 tokens/s', '83.3 tokens/s', '100.0 tokens/s',
+      '100.0 tokens/s', '100.0 tokens/s', '83.3 tokens/s', '100.0 tokens/s',
+    ])
+  })
+
+  it('shows a placeholder for missing or invalid TPS data and image or video generation', () => {
+    const overrides = [
+      { duration_ms: null },
+      { duration_ms: 0 },
+      { duration_ms: -1 },
+      { duration_ms: Infinity },
+      { output_tokens: NaN },
+      { output_tokens: 0 },
+      { output_tokens: -1 },
+      { first_token_ms: null },
+      { first_token_ms: -1 },
+      { first_token_ms: NaN },
+      { first_token_ms: 12000 },
+      { first_token_ms: 13000 },
+      { image_count: 1 },
+      { image_output_tokens: 500 },
+      { billing_mode: 'video' },
+      { request_type: 'live' },
+    ]
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: overrides.map((row, index) => ({
+          ...baseImageRow,
+          request_id: `req-invalid-tps-${index}`,
+          billing_mode: 'token',
+          image_count: 0,
+          output_tokens: 1000,
+          duration_ms: 12000,
+          first_token_ms: 2000,
+          request_type: 'stream',
+          stream: true,
+          ...row,
+        })),
+        columns: [],
+        showAccountBilling: false,
+      },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+
+    const cells = wrapper.findAll('[data-testid="usage-tps"]')
+    expect(cells).toHaveLength(overrides.length)
+    expect(cells.every(cell => cell.text() === '—')).toBe(true)
   })
 
   it('marks only usage rows that actually applied long-context billing', () => {
