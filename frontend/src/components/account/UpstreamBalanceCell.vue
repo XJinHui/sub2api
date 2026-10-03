@@ -101,6 +101,12 @@ const snapshotError = computed(() => {
   return typeof v === 'string' && v !== '' ? v : ''
 })
 const snapshotUpdatedAt = computed(() => {
+  // A successful manual probe is newer than the account list snapshot. Use its
+  // fetch time immediately so the stale badge disappears without a list reload.
+  if (data.value?.success) {
+    const fetchedAt = Number(data.value.fetched_at)
+    if (Number.isFinite(fetchedAt) && fetchedAt > 0) return fetchedAt * 1000
+  }
   const v = props.account.extra?.upstream_balance_updated_at
   if (typeof v !== 'string') return null
   const ts = Date.parse(v)
