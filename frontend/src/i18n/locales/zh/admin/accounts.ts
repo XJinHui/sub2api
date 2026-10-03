@@ -337,6 +337,23 @@ export default {
         protocolSub2API: 'sub2api 网关',
         protocolHint: '余额查询端点与解析格式随对端面板程序而定。',
       },
+      upstreamBalance: {
+        balance: '上游余额 --',
+        used: '已用',
+        probe: '查询',
+        probeTooltip: '查询该上游中转站账号在对端面板的余额',
+        stale: '快照过期',
+        staleTooltip: '距上次成功查询已超过 30 分钟，显示的是历史快照。',
+        updatedAt: '更新于',
+        quotaUnit: '额度单位',
+        quotaUnitHint: '对端改过额度折算率，无法换算为美元，按面板原始额度单位展示。',
+        isRelay: '这是上游中转站账号',
+        isRelayHint: '开启后，账号列表会显示该账号在对端面板的余额（对端需为 New-API 系并暴露 /api/user/self）。',
+        protocol: '对端面板类型',
+        protocolNewAPI: 'New-API / One-API',
+        protocolSub2API: 'sub2api 网关',
+        protocolHint: '余额查询端点与解析格式随对端面板程序而定。',
+      },
       cnProviders: {
         accountMode: {
           title: '账号类型',

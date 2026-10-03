@@ -134,6 +134,23 @@ export default {
         protocolSub2API: 'sub2api gateway',
         protocolHint: 'The balance endpoint and response format depend on the remote panel software.',
       },
+      upstreamBalance: {
+        balance: 'Upstream balance --',
+        used: 'Used',
+        probe: 'Query',
+        probeTooltip: 'Query this upstream relay account balance from the remote panel',
+        stale: 'Stale',
+        staleTooltip: 'Last successful query was over 30 minutes ago; showing a historical snapshot.',
+        updatedAt: 'Updated',
+        quotaUnit: 'quota units',
+        quotaUnitHint: 'The remote panel uses a custom quota-per-unit rate, so the value cannot be converted to USD and is shown in the panel’s raw quota units.',
+        isRelay: 'This is an upstream relay account',
+        isRelayHint: 'When enabled, the account list shows this account’s balance on the remote panel (the panel must be New-API based and expose /api/user/self).',
+        protocol: 'Remote panel type',
+        protocolNewAPI: 'New-API / One-API',
+        protocolSub2API: 'sub2api gateway',
+        protocolHint: 'The balance endpoint and response format depend on the remote panel software.',
+      },
       cnProviders: {
         accountMode: {
           title: 'Account Type',
