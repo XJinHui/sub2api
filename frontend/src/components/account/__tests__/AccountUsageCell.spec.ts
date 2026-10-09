@@ -96,6 +96,10 @@ function makeOpenCodeGoUsage(accountId: number, overrides: Partial<NonNullable<A
 
 // CN 平台 Ollama Cloud / OpenCode Go 用例共用的子组件 stub：按 data-test 断言渲染与否
 const cnUsageCellStubs = {
+  UpstreamBalanceCell: {
+    props: ['account'],
+    template: '<div data-test="upstream-balance-cell" />'
+  },
   OllamaCloudUsageCell: {
     props: ['account'],
     template: '<div data-test="embedded-ollama">ollama</div>'
@@ -109,10 +113,6 @@ const cnUsageCellStubs = {
   },
   CNProviderBalanceCell: {
     template: '<div data-test="cn-balance-cell" />'
-  },
-  UpstreamBalanceCell: {
-    props: ['account'],
-    template: '<div data-test="upstream-balance-cell" />'
   }
 }
 
@@ -343,6 +343,71 @@ describe('AccountUsageCell', () => {
     expect(wrapper.findAll('[data-test="opencode-go-cell"]')).toHaveLength(1)
     expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(false)
     // 用量单元格已渲染时不再叠加 `-` 占位符
+    expect(wrapper.text()).not.toContain('-')
+  })
+
+  it('Command Code 账号渲染额度与积分余额单元格', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9103,
+          platform: 'command_code',
+          type: 'apikey',
+          credentials: { api_key: 'user_test_key', account_mode: 'payg' }
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('-')
+  })
+
+  it('自定义中转的 Command Code 账号没有可查的用量接口，显示占位符', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9105,
+          platform: 'command_code',
+          type: 'apikey',
+          credentials: { api_key: 'user_test_key', account_mode: 'payg', base_url: 'https://relay.example.com/v1' }
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('div[title="admin.accounts.cnProviders.noBalanceEndpoint"]').exists()).toBe(true)
+  })
+
+  it('Cline 账号渲染 ClinePass 窗口与积分余额单元格', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9104,
+          platform: 'cline',
+          type: 'apikey',
+          credentials: { api_key: 'sk-cline' }
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(true)
+    // 子单元格可见时不显示 `-` 占位符（按量账号与订阅账号用同一套单元格）。
     expect(wrapper.text()).not.toContain('-')
   })
 
