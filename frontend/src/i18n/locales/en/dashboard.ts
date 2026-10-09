@@ -395,8 +395,6 @@ export default {
     latency: 'Latency',
     latencyFirstToken: 'First',
     latencyDuration: 'Total',
-    tps: 'Generation TPS',
-    tpsHint: 'Output tokens divided by generation time for streaming requests, excluding first-token wait; total duration for non-streaming requests.',
     outputTps: 'Output TPS',
     outputTpsHint: 'Output tokens divided by total duration, including first-token wait, in tok/s. Output tokens may include reasoning tokens.',
     time: 'Time',

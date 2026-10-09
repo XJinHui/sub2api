@@ -248,8 +248,6 @@
               <span v-else class="text-gray-400 dark:text-gray-500">-</span>
               <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyDuration') }}</span>
               <span class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[durationSeverity(row.duration_ms ?? 0)]">{{ formatDuration(row.duration_ms) }}</span>
-              <span class="text-gray-400 dark:text-gray-500" :title="t('usage.tpsHint')">{{ t('usage.tps') }}</span>
-              <span data-testid="usage-tps" class="whitespace-nowrap font-medium tabular-nums text-gray-700 dark:text-gray-300">{{ formatThroughput(row) }}</span>
               <span class="text-gray-400 dark:text-gray-500" :title="t('usage.outputTpsHint')">{{ t('usage.outputTps') }}</span>
               <span data-testid="output-tps" class="font-medium tabular-nums text-gray-700 dark:text-gray-300">{{ formatUsageOutputRate(row) }}</span>
             </div>
@@ -738,25 +736,6 @@ const formatDuration = (ms: number | null | undefined): string => {
   const totalSec = Math.round(ms / 1000)
   if (totalSec < 3600) return `${Math.floor(totalSec / 60)}m ${totalSec % 60}s`
   return `${Math.floor(totalSec / 3600)}h ${Math.floor((totalSec % 3600) / 60)}m`
-}
-
-const formatThroughput = (row: AdminUsageLog): string => {
-  const requestType = resolveUsageRequestType(row)
-  if ((row.image_count ?? 0) > 0 || hasImageOutputTokens(row) || requestType === 'live' || row.billing_mode === 'video') return '—'
-  if (!Number.isFinite(row.output_tokens) || row.output_tokens <= 0) return '—'
-  if (row.duration_ms == null || !Number.isFinite(row.duration_ms) || row.duration_ms <= 0) return '—'
-
-  let durationMs = row.duration_ms
-  const streaming = requestType === 'stream' || requestType === 'ws_v2'
-    || ((requestType === 'cyber' || requestType === 'unknown') && row.stream)
-  if (streaming) {
-    if (row.first_token_ms == null || !Number.isFinite(row.first_token_ms) || row.first_token_ms < 0) return '—'
-    durationMs -= row.first_token_ms
-  }
-  if (durationMs <= 0) return '—'
-
-  const tps = row.output_tokens / (durationMs / 1000)
-  return Number.isFinite(tps) ? `${tps.toFixed(1)} tokens/s` : '—'
 }
 
 // Cost tooltip functions

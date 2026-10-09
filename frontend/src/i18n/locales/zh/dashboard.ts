@@ -400,8 +400,6 @@ export default {
     latency: '延迟',
     latencyFirstToken: '首字',
     latencyDuration: '总耗时',
-    tps: '生成 TPS',
-    tpsHint: '流式请求按输出 Token ÷ 生成耗时计算，扣除首字等待；非流式请求按总耗时计算。',
     outputTps: '输出 TPS',
     outputTpsHint: '输出 Token ÷ 总耗时（包含首字等待），单位 tok/s。输出 Token 可能包含推理 Token。',
     time: '时间',
