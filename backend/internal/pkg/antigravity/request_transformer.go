@@ -337,6 +337,13 @@ func stripClaudeAttribution(text string) string {
 	return rest
 }
 
+// NormalizeClaudeSystemText removes client billing metadata and normalizes a
+// leading Claude identity before forwarding system instructions to Google.
+// User instructions after the opener, including vendor mentions, are preserved.
+func NormalizeClaudeSystemText(text string) string {
+	return neutralizeClaudeIdentity(stripClaudeAttribution(text))
+}
+
 // buildSystemInstruction 构建 systemInstruction（与 Antigravity-Manager 保持一致）
 func buildSystemInstruction(system json.RawMessage, modelName string, opts TransformOptions, tools []ClaudeTool) *GeminiContent {
 	var parts []GeminiPart
@@ -349,7 +356,7 @@ func buildSystemInstruction(system json.RawMessage, modelName string, opts Trans
 		// 尝试解析为字符串
 		var sysStr string
 		if err := json.Unmarshal(system, &sysStr); err == nil {
-			sysStr = neutralizeClaudeIdentity(stripClaudeAttribution(sysStr))
+			sysStr = NormalizeClaudeSystemText(sysStr)
 			if strings.TrimSpace(sysStr) != "" {
 				if strings.Contains(sysStr, "You are Antigravity") {
 					userHasAntigravityIdentity = true
@@ -365,7 +372,7 @@ func buildSystemInstruction(system json.RawMessage, modelName string, opts Trans
 			var sysBlocks []SystemBlock
 			if err := json.Unmarshal(system, &sysBlocks); err == nil {
 				for _, block := range sysBlocks {
-					block.Text = neutralizeClaudeIdentity(stripClaudeAttribution(block.Text))
+					block.Text = NormalizeClaudeSystemText(block.Text)
 					if block.Type == "text" && strings.TrimSpace(block.Text) != "" {
 						if strings.Contains(block.Text, "You are Antigravity") {
 							userHasAntigravityIdentity = true
