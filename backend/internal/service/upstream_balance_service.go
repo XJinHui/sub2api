@@ -23,30 +23,29 @@ import (
 // **第三方中转面板**的余额端点，端点路径随面板程序而异，所以协议可配。
 //
 // 已覆盖协议：
+//
 //   - New-API / One-API 系：GET {base}/api/user/self  (Authorization: Bearer <数据面 key>)
 //     → data.quota（剩余额度）/ data.used_quota（已用额度）
 //
-//   - sub2api 自身：**无 API key 读法**。其管理面（/api/v1/user/profile、
-//     /api/v1/user/platform-quotas）全部挂在 JWTAuth 之下（internal/server/routes/user.go:26），
-//     只用数据面 key 调用一律 401。若上游确实是另一台 sub2api，本服务会返回
-//     UPSTREAM_BALANCE_BAD_RESPONSE（拿不到 data.quota），而不是静默出 0 —— 见 readme 说明。
+//   - sub2api：GET {base}/v1/usage（数据面 API key 鉴权），读取 remaining，
+//     支持余额、订阅和 Key 配额模式；不使用需要登录 JWT 的管理面接口。
 //
 // 单位：New-API 的 quota 是**内部整数单位**，默认 500000 = $1（quota_per_unit），
 // 且站长可改。拿不到换算率时 result.Unit="quota"，调用方必须按「额度单位」展示，
 // 不得当成美元。
 const (
-	upstreamBalanceTimeout    = 15 * time.Second
-	upstreamBalanceMaxBody    = 256 * 1024
+	upstreamBalanceTimeout      = 15 * time.Second
+	upstreamBalanceMaxBody      = 256 * 1024
 	upstreamDefaultQuotaPerUnit = 500000.0
 
 	// Extra 快照键（前缀 upstream_，与 cn 供应商的 <provider>_balance 区分，
 	// 避免同一个账号两种探测互相覆盖）。
-	upstreamExtraBalance    = "upstream_balance"
-	upstreamExtraUsed       = "upstream_balance_used"
-	upstreamExtraUnit       = "upstream_balance_unit" // "usd" | "quota"
-	upstreamExtraUpdated    = "upstream_balance_updated_at"
-	upstreamExtraError      = "upstream_balance_error"
-	upstreamExtraProtocol   = "upstream_balance_protocol"
+	upstreamExtraBalance  = "upstream_balance"
+	upstreamExtraUsed     = "upstream_balance_used"
+	upstreamExtraUnit     = "upstream_balance_unit" // "usd" | "quota"
+	upstreamExtraUpdated  = "upstream_balance_updated_at"
+	upstreamExtraError    = "upstream_balance_error"
+	upstreamExtraProtocol = "upstream_balance_protocol"
 )
 
 // 上游中转面板协议标识。
@@ -70,9 +69,9 @@ type UpstreamBalanceResult struct {
 	// Unit 为 "usd" 时 Balance/Used 已是美元；为 "quota" 时是面板内部整数单位，
 	// 前端必须按额度单位展示（不能加 $）。
 	Unit       string  `json:"unit"`
-	Balance    float64 `json:"balance"`      // 剩余
-	Used       float64 `json:"used"`         // 已用
-	QuotaRaw   float64 `json:"quota_raw"`    // 面板原始 quota 整数（排查用）
+	Balance    float64 `json:"balance"`   // 剩余
+	Used       float64 `json:"used"`      // 已用
+	QuotaRaw   float64 `json:"quota_raw"` // 面板原始 quota 整数（排查用）
 	StatusCode int     `json:"status_code,omitempty"`
 	FetchedAt  int64   `json:"fetched_at"`
 	Persisted  bool    `json:"persisted"`
@@ -294,11 +293,15 @@ func (s *UpstreamBalanceService) parseSub2APIBalance(bodyBytes []byte, result *U
 // 探测结果本身有价值，落库失败不该让调用方拿不到余额。
 func (s *UpstreamBalanceService) persist(ctx context.Context, account *Account, result *UpstreamBalanceResult) {
 	updates := map[string]any{
-		upstreamExtraBalance:  result.Balance,
-		upstreamExtraUsed:     result.Used,
-		upstreamExtraUnit:     result.Unit,
-		upstreamExtraUpdated:  time.Unix(result.FetchedAt, 0).UTC().Format(time.RFC3339),
 		upstreamExtraProtocol: result.Protocol,
+	}
+	// Failed polling must not replace the last successful balance with zero or
+	// make an old balance appear fresh. Persist the error while retaining it.
+	if result.Success {
+		updates[upstreamExtraBalance] = result.Balance
+		updates[upstreamExtraUsed] = result.Used
+		updates[upstreamExtraUnit] = result.Unit
+		updates[upstreamExtraUpdated] = time.Unix(result.FetchedAt, 0).UTC().Format(time.RFC3339)
 	}
 	// 成功必须显式清空上一次的错误，否则 UI 会一直挂着旧报错。
 	updates[upstreamExtraError] = result.Error

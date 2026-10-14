@@ -72,7 +72,7 @@ const props = defineProps<{
 
 const { t } = useI18n()
 
-// 快照超过这个时长就标记为「旧」——与后端周期探测的默认间隔同量级。
+// 快照超过这个时长就标记为「旧」。
 const SNAPSHOT_STALE_MS = 30 * 60 * 1000
 
 const visible = computed(() =>
@@ -201,12 +201,14 @@ const handleProbe = async () => {
   }
 }
 
-// 展示持久化的失败原因（例如对端不是 New-API 面板），这是 UI 知道「为什么
-// 这行没有数字」的唯一途径。
+// New list/automatic snapshots supersede older local manual results and errors.
 watch(
-  snapshotError,
-  (v) => {
-    if (v && !error.value) error.value = v
+  () => [props.account.extra?.upstream_balance_updated_at, snapshotBalance.value,
+    snapshotUsed.value, snapshotUnit.value, snapshotError.value] as const,
+  ([updatedAt, , , , nextError]) => {
+    const timestamp = typeof updatedAt === 'string' ? Date.parse(updatedAt) : NaN
+    if (data.value && timestamp >= data.value.fetched_at * 1000) data.value = null
+    error.value = nextError || null
   },
   { immediate: true }
 )

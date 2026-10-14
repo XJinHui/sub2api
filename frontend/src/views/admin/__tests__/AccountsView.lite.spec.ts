@@ -4,6 +4,7 @@ import { defineComponent } from 'vue'
 
 import AccountsView from '../AccountsView.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
+import AccountTableActions from '@/components/admin/account/AccountTableActions.vue'
 
 const {
   listAccounts,
@@ -15,7 +16,8 @@ const {
   getAllGroups,
   refreshCredentials,
   showError,
-  showWarning
+  showWarning,
+  queryUpstreamBalance
 } = vi.hoisted(() => ({
   listAccounts: vi.fn(),
   listWithEtag: vi.fn(),
@@ -26,7 +28,8 @@ const {
   getAllGroups: vi.fn(),
   refreshCredentials: vi.fn(),
   showError: vi.fn(),
-  showWarning: vi.fn()
+  showWarning: vi.fn(),
+  queryUpstreamBalance: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -44,6 +47,7 @@ vi.mock('@/api/admin', () => ({
       refreshCredentials
     },
     proxies: { getAll: getAllProxies },
+    upstreamBalance: { queryUpstreamBalance },
     groups: { getAll: getAllGroups }
   }
 }))
@@ -68,6 +72,7 @@ const DataTableStub = defineComponent({
       <div v-for="row in data" :key="row.id" :data-account-name="row.name">
         <slot name="cell-groups" :row="row" />
         <slot name="cell-actions" :row="row" />
+        <slot name="cell-usage" :row="row" />
       </div>
     </div>
   `
@@ -124,7 +129,10 @@ function mountView(stubActionMenu = true) {
         AccountStatusIndicator: true,
         AccountTodayStatsCell: true,
         AccountGroupsCell: AccountGroupsCellStub,
-        AccountUsageCell: true,
+        AccountUsageCell: {
+          props: ['account'],
+          template: '<span data-test="balance">{{ account.extra?.upstream_balance }} {{ account.extra?.upstream_balance_error }}</span>'
+        },
         UpstreamBillingRateCell: true,
         HelpTooltip: true,
         Icon: true,
@@ -169,6 +177,10 @@ describe('admin AccountsView lite account list', () => {
     refreshCredentials.mockReset()
     showError.mockReset()
     showWarning.mockReset()
+    queryUpstreamBalance.mockReset().mockImplementation((id: number) => Promise.resolve({
+      success: true, account_id: id, protocol: 'sub2api', unit: 'usd',
+      balance: 12, used: 3, fetched_at: Math.floor(Date.now() / 1000), persisted: true
+    }))
   })
 
   afterEach(() => {
@@ -234,6 +246,97 @@ describe('admin AccountsView lite account list', () => {
       expect.objectContaining({ lite: '1' }),
       expect.objectContaining({ etag: null })
     )
+    wrapper.unmount()
+  })
+
+  it('queries both relay protocols even when the automatic list response is 304', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
+    listAccounts.mockResolvedValue({ items: [listRow, ...['sub2api', 'newapi'].map((protocol, index) => ({
+      ...listRow, id: index + 1, type: 'apikey', credentials: { upstream_protocol: protocol },
+      extra: { upstream_balance: 9, upstream_balance_error: 'old error' }
+    }))], total: 3, pages: 1 })
+    const wrapper = mountView()
+    await flushPromises()
+    expect(queryUpstreamBalance).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(6000)
+    await flushPromises()
+    expect(queryUpstreamBalance.mock.calls.map(call => call[0])).toEqual([1, 2])
+    expect(wrapper.findAll('[data-test="balance"]').map(cell => cell.text())).toEqual(['', '12', '12'])
+    wrapper.unmount()
+  })
+
+  it('runs relay queries serially without overlapping rounds and aborts on unmount', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
+    listAccounts.mockResolvedValue({ items: [1, 2].map(id => ({
+      ...listRow, id, type: 'apikey', credentials: { upstream_protocol: 'sub2api' }
+    })), total: 2, pages: 1 })
+    let resolveFirst!: (value: unknown) => void
+    let resolveSecond!: (value: unknown) => void
+    queryUpstreamBalance.mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve }))
+      .mockImplementationOnce(() => new Promise(resolve => { resolveSecond = resolve }))
+    const wrapper = mountView()
+    await flushPromises()
+    // Do not await the asynchronous timer while the deliberately slow query is pending.
+    vi.advanceTimersByTime(6000)
+    await flushPromises()
+    expect(queryUpstreamBalance).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(20000)
+    await flushPromises()
+    expect(queryUpstreamBalance).toHaveBeenCalledTimes(1)
+    resolveFirst({ success: true, fetched_at: Math.floor(Date.now() / 1000), balance: 4 })
+    await flushPromises()
+    expect(queryUpstreamBalance.mock.calls.map(call => call[0])).toEqual([1, 2])
+    const signal = queryUpstreamBalance.mock.calls[1][1].signal as AbortSignal
+    wrapper.unmount()
+    expect(signal.aborted).toBe(true)
+    resolveSecond({ success: true, fetched_at: Math.floor(Date.now() / 1000), balance: 4 })
+    await flushPromises()
+    expect(queryUpstreamBalance).toHaveBeenCalledTimes(2)
+  })
+
+  it('retains the previous balance on failures and continues refreshing the next relay', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
+    listAccounts.mockResolvedValue({ items: [1, 2, 3].map(id => ({
+      ...listRow, id, type: 'apikey', credentials: { upstream_protocol: 'sub2api' },
+      extra: { upstream_balance: 9 }
+    })), total: 3, pages: 1 })
+    queryUpstreamBalance.mockResolvedValueOnce({ success: false, fetched_at: Math.floor(Date.now() / 1000), balance: 0, error: 'HTTP 401' })
+      .mockRejectedValueOnce(new Error('timeout'))
+    const wrapper = mountView()
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(6000)
+    await flushPromises()
+    expect(wrapper.findAll('[data-test="balance"]').map(cell => cell.text())).toEqual(['9 HTTP 401', '9 timeout', '12'])
+    wrapper.unmount()
+  })
+
+  it('pauses automatic relay polling while the page is hidden', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+    localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
+    listAccounts.mockResolvedValue({ items: [{ ...listRow, type: 'apikey', credentials: { upstream_protocol: 'sub2api' } }], total: 1, pages: 1 })
+    const wrapper = mountView()
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(queryUpstreamBalance).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('refreshes relay balances from the toolbar even with automatic refresh disabled', async () => {
+    listAccounts.mockResolvedValue({ items: [{ ...listRow, type: 'apikey', credentials: { upstream_protocol: 'sub2api' } }], total: 1, pages: 1 })
+    const wrapper = mountView()
+    await flushPromises()
+    expect(queryUpstreamBalance).not.toHaveBeenCalled()
+    wrapper.findComponent(AccountTableActions).vm.$emit('refresh')
+    await flushPromises()
+    expect(queryUpstreamBalance).toHaveBeenCalledWith(42, { signal: expect.any(AbortSignal) })
+    expect(wrapper.get('[data-test="balance"]').text()).toBe('12')
     wrapper.unmount()
   })
 

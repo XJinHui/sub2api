@@ -532,6 +532,7 @@ import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRules
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { fetchAllAccountIds } from '@/utils/accountSelection'
 import { buildGrokUsageRefreshKey, buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
+import { upstreamBalanceCellVisible } from '@/components/account/credentialsBuilder'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -701,6 +702,8 @@ const autoRefreshIntervalSeconds = ref<(typeof autoRefreshIntervals)[number]>(30
 const autoRefreshCountdown = ref(0)
 const autoRefreshETag = ref<string | null>(null)
 const autoRefreshFetching = ref(false)
+let upstreamBalanceAbortController: AbortController | null = null
+let upstreamBalanceDisposed = false
 const AUTO_REFRESH_SILENT_WINDOW_MS = 15000
 const autoRefreshSilentUntil = ref(0)
 const hasPendingListSync = ref(false)
@@ -1030,6 +1033,7 @@ const setAutoRefreshEnabled = (enabled: boolean) => {
     resumeAutoRefresh()
   } else {
     pauseAutoRefresh()
+    upstreamBalanceAbortController?.abort()
     autoRefreshCountdown.value = 0
   }
 }
@@ -1442,6 +1446,60 @@ const mergeAccountsIncrementally = (nextRows: Account[]) => {
   }
 }
 
+// Query current-page relays serially. Each automatic round waits for completion,
+// so a slow upstream cannot create overlapping rounds or a burst of requests.
+const refreshUpstreamBalances = async (manual = false) => {
+  if (upstreamBalanceDisposed || upstreamBalanceAbortController) return
+  const controller = new AbortController()
+  upstreamBalanceAbortController = controller
+  const relayIdentity = (account: Account) => JSON.stringify([
+    account.type, account.credentials?.upstream_protocol,
+    account.credentials?.base_url, account.credentials?.api_key, account.proxy_id
+  ])
+  try {
+    const rows = accounts.value.filter(account =>
+      upstreamBalanceCellVisible(account.type, account.credentials)
+    )
+    for (const row of rows) {
+      if (controller.signal.aborted) break
+      if (!manual && (!autoRefreshEnabled.value || document.hidden || isAnyModalOpen.value)) break
+      const identity = relayIdentity(row)
+      if (!accounts.value.some(account => account.id === row.id && relayIdentity(account) === identity)) continue
+      try {
+        const result = await adminAPI.upstreamBalance.queryUpstreamBalance(row.id, { signal: controller.signal })
+        if (controller.signal.aborted) break
+        const current = accounts.value.find(account => account.id === row.id)
+        if (!current || relayIdentity(current) !== identity) continue
+        const fetchedAt = new Date(result.fetched_at * 1000).toISOString()
+        const currentUpdatedAt = Date.parse(String(current.extra?.upstream_balance_updated_at ?? ''))
+        if (currentUpdatedAt > result.fetched_at * 1000) continue
+        const extra = { ...current.extra, upstream_balance_error: result.error || '' }
+        if (result.success) {
+          Object.assign(extra, {
+            upstream_balance: result.balance,
+            upstream_balance_used: result.used,
+            upstream_balance_unit: result.unit,
+            upstream_balance_updated_at: fetchedAt,
+            upstream_balance_protocol: result.protocol
+          })
+        }
+        const next = { ...current, extra }
+        accounts.value = accounts.value.map(account => account.id === next.id ? next : account)
+        syncAccountRefs(next)
+      } catch (error) {
+        if (controller.signal.aborted) break
+        const current = accounts.value.find(account => account.id === row.id)
+        if (!current || relayIdentity(current) !== identity) continue
+        const next = { ...current, extra: { ...current.extra, upstream_balance_error: extractApiErrorMessage(error, t('common.error')) } }
+        accounts.value = accounts.value.map(account => account.id === next.id ? next : account)
+        syncAccountRefs(next)
+      }
+    }
+  } finally {
+    upstreamBalanceAbortController = null
+  }
+}
+
 const refreshAccountsIncrementally = async () => {
   if (autoRefreshFetching.value) return
   syncAccountListDerivedParams()
@@ -1476,6 +1534,7 @@ const refreshAccountsIncrementally = async () => {
     upstreamBillingNow.value = Date.now()
 
     await refreshTodayStatsBatch()
+    await refreshUpstreamBalances()
   } catch (error) {
     console.error('Auto refresh failed:', error)
   } finally {
@@ -1487,6 +1546,7 @@ const handleManualRefresh = async () => {
   await Promise.all([load(), loadUpstreamBillingProbeGlobalState()])
   // Force usage cells to refetch /usage on explicit user refresh.
   usageManualRefreshToken.value += 1
+  await refreshUpstreamBalances(true)
 }
 
 const loadUpstreamBillingProbeGlobalState = async () => {
@@ -2567,6 +2627,8 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  upstreamBalanceDisposed = true
+  upstreamBalanceAbortController?.abort()
   upstreamBillingRateAbortController?.abort()
   if (usageBatchFlushTimer !== null) {
     clearTimeout(usageBatchFlushTimer)

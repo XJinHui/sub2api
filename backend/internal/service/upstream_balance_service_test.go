@@ -137,9 +137,13 @@ func TestUpstreamBalance_AuthFailureIsNotZeroBalance(t *testing.T) {
 	require.False(t, result.Success)
 	require.Contains(t, result.Error, "Authentication failed")
 	require.Zero(t, result.Balance)
-	// 失败也要落快照（带错误），否则 UI 会一直显示上一次的成功余额。
+	// 失败记录错误，同时保留最近成功额度与时间，不能写入伪造的零余额。
 	require.True(t, result.Persisted)
 	require.Contains(t, repo.extraWrites[0][upstreamExtraError], "Authentication failed")
+	require.NotContains(t, repo.extraWrites[0], upstreamExtraBalance)
+	require.NotContains(t, repo.extraWrites[0], upstreamExtraUsed)
+	require.NotContains(t, repo.extraWrites[0], upstreamExtraUnit)
+	require.NotContains(t, repo.extraWrites[0], upstreamExtraUpdated)
 }
 
 // 200 但结构不是 New-API（例如对端是 sub2api 的其它路径）→ 明确报解析失败。

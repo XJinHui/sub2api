@@ -29,9 +29,10 @@ export interface UpstreamBalanceResult {
 }
 
 /** 查询上游中转站账号余额。 */
-export async function queryUpstreamBalance(id: number): Promise<UpstreamBalanceResult> {
+export async function queryUpstreamBalance(id: number, options?: { signal?: AbortSignal }): Promise<UpstreamBalanceResult> {
   const { data } = await apiClient.get<UpstreamBalanceResult>(
-    `/admin/upstream-balance/accounts/${id}/balance`
+    `/admin/upstream-balance/accounts/${id}/balance`,
+    { signal: options?.signal }
   )
   return data
 }
