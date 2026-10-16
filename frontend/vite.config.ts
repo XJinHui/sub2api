@@ -87,7 +87,9 @@ export default defineConfig(({ mode }) => {
     plugins: [
       vue(),
       checker({
-        vueTsc: true
+        vueTsc: true,
+        // 类型检查由 build 脚本单独执行，避免打包时重复占用内存。
+        enableBuild: false
       }),
       injectPublicSettings(backendUrl)
     ],
