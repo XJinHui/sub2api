@@ -1,0 +1,70 @@
+name: Local Update Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: local-update-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      NODE_OPTIONS: --max-old-space-size=3072
+      GOMAXPROCS: '1'
+      GOMEMLIMIT: 2GiB
+      CGO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck frontend separately
+        working-directory: frontend
+        run: pnpm exec vue-tsc -b
+      - name: Check locale keys and local balance components
+        working-directory: frontend
+        run: pnpm exec vitest run src/i18n/__tests__/localeKeyCompleteness.spec.ts src/components/account/__tests__/UpstreamBalanceCell.spec.ts --maxWorkers=1 --minWorkers=1
+      - name: Build frontend without duplicate checker
+        working-directory: frontend
+        run: pnpm exec vite build
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Check identity compatibility
+        working-directory: backend
+        run: go test -p 1 ./internal/pkg/antigravity -run 'Test(TransformClaudeToGemini_Attribution|NeutralizeClaudeIdentity|AttributionAndIdentityTogether|TransformClaudeToGemini_Identity)' -count=1
+      - name: Build embedded Linux binary
+        working-directory: backend
+        shell: bash
+        run: |
+          mkdir -p ../update-artifact
+          VERSION=$(cat cmd/server/VERSION)
+          BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          go build -p 1 -trimpath -tags embed -ldflags "-s -w -X main.Version=$VERSION -X main.Commit=$GITHUB_SHA -X main.Date=$BUILD_DATE -X main.BuildType=release" -o ../update-artifact/sub2api ./cmd/server
+          cd ..
+          cp -R backend/resources update-artifact/resources
+          cp deploy/docker-entrypoint.sh update-artifact/docker-entrypoint.sh
+          printf '%s\n' "$GITHUB_SHA" > update-artifact/source-commit.txt
+          cd update-artifact
+          sha256sum sub2api > SHA256SUMS
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sub2api-linux-amd64-${{ github.sha }}
+          path: update-artifact/
+          if-no-files-found: error
+          retention-days: 7
