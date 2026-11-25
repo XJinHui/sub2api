@@ -176,7 +176,7 @@ func (s *UpstreamBalanceService) queryBalanceForAccount(ctx context.Context, acc
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Accept", "application/json")
-	account.ApplyHeaderOverrides(req.Header)
+	account.ApplyHeaderOverrides(callCtx, req.Header)
 
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, maxInt(account.Concurrency, 1))
 	if err != nil {
