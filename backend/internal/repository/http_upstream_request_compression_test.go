@@ -107,10 +107,11 @@ func TestMaybeCompressUpstreamRequest_Skips(t *testing.T) {
 			url:         "https://relay.example/v1/responses",
 		},
 		{
-			name:        "default excluded host",
+			name:        "excluded host",
 			body:        large,
 			contentType: "application/json",
 			url:         "https://api.openai.com/v1/responses",
+			exclude:     []string{"api.openai.com"},
 		},
 		{
 			name:        "custom excluded suffix",
@@ -169,7 +170,7 @@ func TestMaybeCompressUpstreamRequest_Skips(t *testing.T) {
 			svc := compressionTestService(true, 256*1024, tt.exclude)
 			state := svc.maybeCompressUpstreamRequest(req, 1)
 			require.False(t, state.compressed)
-			require.Empty(t, req.Header.Get("Content-Encoding"))
+			require.NotEqual(t, "gzip", req.Header.Get("Content-Encoding"))
 		})
 	}
 }

@@ -63,7 +63,7 @@ func TestConvertClaudeMessagesToGeminiGenerateContent_ClientSystemMetadata(t *te
 				}},
 			})
 			require.NoError(t, err)
-			out, err := convertClaudeMessagesToGeminiGenerateContent(body)
+			out, err := convertClaudeMessagesToGeminiGenerateContent(body, "gemini-3.8-flash")
 			require.NoError(t, err)
 			var got map[string]any
 			require.NoError(t, json.Unmarshal(out, &got))
