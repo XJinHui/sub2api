@@ -38,6 +38,24 @@ func TestLoadDefaultMinOutputTokens(t *testing.T) {
 	require.Equal(t, 128, cfg.Gateway.MinOutputTokens)
 }
 
+func TestLoadDefaultUpstreamRequestCompression(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.Gateway.UpstreamRequestCompression)
+	require.Equal(t, DefaultUpstreamRequestCompressionMinBytes, cfg.Gateway.UpstreamRequestCompressionMinBytes)
+	require.Contains(t, cfg.Gateway.UpstreamRequestCompressionExcludeHosts, "api.openai.com")
+	require.Contains(t, cfg.Gateway.UpstreamRequestCompressionExcludeHosts, "*.googleapis.com")
+}
+
+func TestLoadUpstreamRequestCompressionExcludeHostsFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_UPSTREAM_REQUEST_COMPRESSION_EXCLUDE_HOSTS", "relay.example, *.corp.example")
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, []string{"relay.example", "*.corp.example"}, cfg.Gateway.UpstreamRequestCompressionExcludeHosts)
+}
+
 func TestLoadMinOutputTokensFromEnv(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("GATEWAY_MIN_OUTPUT_TOKENS", "16")

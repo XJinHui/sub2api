@@ -67,6 +67,23 @@ const DefaultUpstreamResponseReadMaxBytes int64 = 128 * 1024 * 1024
 // 可通过 gateway.models_list_read_max_bytes 配置项覆盖。
 const DefaultModelsListReadMaxBytes int64 = 8 * 1024 * 1024
 
+// DefaultUpstreamRequestCompressionMinBytes 上游请求体 gzip 的默认最小字节数。
+// 小于该值的请求压缩收益不足以抵消 CPU 与协议开销，保持原样发送。
+const DefaultUpstreamRequestCompressionMinBytes int64 = 256 * 1024
+
+// defaultUpstreamRequestCompressionExcludeHosts 默认不压缩的上游主机。
+//
+// 这些厂商端点并不保证接受请求侧的 Content-Encoding: gzip；中转站（sub2api /
+// new-api 等）通常支持，但不能假定官方 API 也支持。本地容器主机名由
+// isLocalUpstreamHost 另行跳过，不在此列出。
+var defaultUpstreamRequestCompressionExcludeHosts = []string{
+	"api.openai.com",
+	"api.anthropic.com",
+	"api.x.ai",
+	"*.googleapis.com",
+	"openrouter.ai",
+}
+
 type Config struct {
 	Server                  ServerConfig                  `mapstructure:"server"`
 	Log                     LogConfig                     `mapstructure:"log"`
@@ -1056,6 +1073,24 @@ type GatewayConfig struct {
 	RequestBodyReadTimeoutSeconds int `mapstructure:"request_body_read_timeout_seconds"`
 	// DownstreamWriteTimeoutSeconds bounds each HTTP write/flush, not the lifetime of a stream.
 	DownstreamWriteTimeoutSeconds int `mapstructure:"downstream_write_timeout_seconds"`
+	// UpstreamRequestCompression enables gzip compression for upstream JSON request
+	// bodies at or above UpstreamRequestCompressionMinBytes.
+	//
+	// This targets the largest cost of relaying long-context requests: the gateway
+	// must re-upload the whole body to the upstream, and a 3Mbps egress link turns a
+	// 13MB Codex turn into ~40s of upload before the model even starts. Compression
+	// is applied by the shared upstream HTTP service, so it covers all gateway
+	// protocols rather than only OpenAI.
+	UpstreamRequestCompression bool `mapstructure:"upstream_request_compression"`
+	// UpstreamRequestCompressionMinBytes is the minimum body size to compress.
+	// 0 falls back to 256KiB. Bodies below this stay uncompressed.
+	UpstreamRequestCompressionMinBytes int64 `mapstructure:"upstream_request_compression_min_bytes"`
+	// UpstreamRequestCompressionExcludeHosts lists upstream hosts that must never
+	// receive gzip request bodies. Entries match the exact host or any subdomain;
+	// a leading "*." matches the suffix. Official vendor endpoints and local
+	// container hostnames are excluded by default because they do not all accept
+	// Content-Encoding on requests.
+	UpstreamRequestCompressionExcludeHosts []string `mapstructure:"upstream_request_compression_exclude_hosts"`
 	// TextMaxBodySize limits endpoints that cannot carry inline image/video payloads.
 	TextMaxBodySize int64 `mapstructure:"text_max_body_size"`
 	// 非流式上游响应体读取上限（字节），用于防止无界读取导致内存放大
@@ -1934,6 +1969,9 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	if forwardedClientIPHeadersEnvConfigured {
 		cfg.Security.ForwardedClientIPHeaders = normalizeStringSlice(strings.Split(forwardedClientIPHeadersEnv, ","))
 	}
+	if excludeHostsEnv, ok := os.LookupEnv("GATEWAY_UPSTREAM_REQUEST_COMPRESSION_EXCLUDE_HOSTS"); ok && strings.TrimSpace(excludeHostsEnv) != "" {
+		cfg.Gateway.UpstreamRequestCompressionExcludeHosts = normalizeStringSlice(strings.Split(excludeHostsEnv, ","))
+	}
 	cfg.Server.TrustedProxiesConfigured = trustedProxiesConfigured
 	if cfg.Gateway.OpenAIScheduler.StickyEscapeTTFTMs == 0 {
 		cfg.Gateway.OpenAIScheduler.StickyEscapeTTFTMs = 15000
@@ -2599,6 +2637,9 @@ func setDefaults() {
 	viper.SetDefault("gateway.request_body_read_timeout_seconds", 120)
 	viper.SetDefault("gateway.downstream_write_timeout_seconds", 120)
 	viper.SetDefault("gateway.text_max_body_size", int64(32*1024*1024))
+	viper.SetDefault("gateway.upstream_request_compression", true)
+	viper.SetDefault("gateway.upstream_request_compression_min_bytes", DefaultUpstreamRequestCompressionMinBytes)
+	viper.SetDefault("gateway.upstream_request_compression_exclude_hosts", defaultUpstreamRequestCompressionExcludeHosts)
 	viper.SetDefault("gateway.upstream_response_read_max_bytes", DefaultUpstreamResponseReadMaxBytes)
 	viper.SetDefault("gateway.models_list_read_max_bytes", DefaultModelsListReadMaxBytes)
 	viper.SetDefault("gateway.proxy_probe_response_read_max_bytes", int64(1024*1024))
@@ -3433,6 +3474,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.DownstreamWriteTimeoutSeconds < 0 || c.Gateway.DownstreamWriteTimeoutSeconds > 3600 {
 		return fmt.Errorf("gateway.downstream_write_timeout_seconds must be between 0 and 3600")
+	}
+	if c.Gateway.UpstreamRequestCompressionMinBytes < 0 {
+		return fmt.Errorf("gateway.upstream_request_compression_min_bytes must be non-negative")
 	}
 	if c.Gateway.SSEQueueMaxBytes < 0 || c.Gateway.SSEEventMaxBytes < 0 || c.Gateway.SSEEventMaxLines < 0 {
 		return fmt.Errorf("gateway.sse_queue_max_bytes, sse_event_max_bytes and sse_event_max_lines must be non-negative")

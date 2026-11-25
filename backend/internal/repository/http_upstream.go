@@ -168,6 +168,9 @@ type httpUpstreamService struct {
 	clients map[string]*upstreamClientEntry // 客户端缓存池，key 由隔离策略决定
 	// OpenAI 走 HTTP/HTTPS 代理时的 H2->H1 回退状态（key=标准化 proxyKey）
 	openAIHTTP2Fallbacks sync.Map
+	// requestCompressionUnsupported 记录经探测确认不接受请求体 gzip 的上游主机，
+	// value 为过期时间（time.Time）。过期后重新尝试，避免永久失去压缩收益。
+	requestCompressionUnsupported sync.Map
 }
 
 // NewHTTPUpstream 创建通用 HTTP 上游服务
@@ -220,7 +223,8 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	// 执行请求
 	client := s.httpClientForUpstreamRequest(entry.client, req)
 	client = httpClientWithGrokAccessDeniedFallback(client)
-	resp, err := doUpstreamRequest(client, req, s.upstreamDrainTimeout())
+	compression := s.maybeCompressUpstreamRequest(req, accountID)
+	resp, err := s.doWithRequestCompression(client, req, compression)
 	if err != nil {
 		s.recordOpenAIHTTP2Failure(profile, entry.protocolMode, entry.proxyKey, err)
 		// 请求失败，立即减少计数
@@ -281,7 +285,8 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 
 	client := s.httpClientForUpstreamRequest(entry.client, req)
 	client = httpClientWithGrokAccessDeniedFallback(client)
-	resp, err := doUpstreamRequest(client, req, s.upstreamDrainTimeout())
+	compression := s.maybeCompressUpstreamRequest(req, accountID)
+	resp, err := s.doWithRequestCompression(client, req, compression)
 	if err != nil {
 		atomic.AddInt64(&entry.inFlight, -1)
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
