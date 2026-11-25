@@ -369,9 +369,7 @@ func upstreamBalanceURL(account *Account, protocol string) string {
 	}
 	if protocol == UpstreamProtocolSub2API {
 		// base 通常已带 /v1（如 https://host/v1），去掉再拼，避免 /v1/v1/usage。
-		if strings.HasSuffix(base, "/v1") {
-			base = strings.TrimSuffix(base, "/v1")
-		}
+		base = strings.TrimSuffix(base, "/v1")
 		return base + "/v1/usage"
 	}
 	return base + "/api/user/self"
